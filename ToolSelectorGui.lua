@@ -349,7 +349,7 @@ cpBtn.MouseButton1Click:Connect(function()
     if not _G.CopyPasteTool then
         task.spawn(function()
             task.wait()
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/Neosq/CPT/refs/heads/main/CPT_Loader.lua"))()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/JustUser-ALT/CPT/refs/heads/main/CPT_Loader.lua"))()
         end)
     end
 end)
