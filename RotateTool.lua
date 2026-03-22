@@ -567,7 +567,6 @@ function M.activateMulti(models)
 end
 
 function M.setStep(step)
-    -- Rotate uses degrees, not units. Keep default 45 unless explicitly set via setRotateStep
 end
 
 function M.setRotateStep(deg)
