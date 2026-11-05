@@ -14,6 +14,7 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
@@ -79,6 +80,11 @@ local HandleDefinitions = {
 }
 
 local Handles = {}
+local ActiveHandle
+local ActiveInputType
+local ActiveTouchInput
+local CaptureActionName = "JustX_RotateHandleCapture"
+local HitRadius = 23
 
 for index, definition in ipairs(HandleDefinitions) do
     local outline = Drawing.new("Circle")
@@ -135,6 +141,102 @@ local function SetModel(model)
     local size = GetModelSize(model)
     HandleDistance = math.max(size.X, size.Y, size.Z) * 0.65 + 0.5
 end
+
+
+local function GetScreenPosition(inputObject)
+    local position = inputObject.Position
+    return Vector2.new(position.X, position.Y)
+end
+
+local function FindHandleAt(position)
+    local closestIndex
+    local closestDistance = HitRadius
+
+    for index, handle in ipairs(Handles) do
+        if handle.Fill.Visible then
+            local distance = (handle.Fill.Position - position).Magnitude
+
+            if distance <= closestDistance then
+                closestDistance = distance
+                closestIndex = index
+            end
+        end
+    end
+
+    return closestIndex
+end
+
+local function SetActiveHandle(index)
+    ActiveHandle = index
+
+    for handleIndex, handle in ipairs(Handles) do
+        local active = handleIndex == index
+
+        handle.Fill.Radius = active and 15 or HandleRadius
+        handle.Outline.Radius = active and 18 or OutlineRadius
+        handle.Fill.Transparency = active and 1 or 0.92
+        handle.Outline.Transparency = active and 1 or 0.85
+    end
+end
+
+local function CaptureInput(_, inputState, inputObject)
+    local inputType = inputObject.UserInputType
+
+    if inputState == Enum.UserInputState.Begin then
+        if inputType ~= Enum.UserInputType.MouseButton1
+            and inputType ~= Enum.UserInputType.Touch then
+            return Enum.ContextActionResult.Pass
+        end
+
+        local handleIndex = FindHandleAt(GetScreenPosition(inputObject))
+
+        if not handleIndex then
+            return Enum.ContextActionResult.Pass
+        end
+
+        ActiveInputType = inputType
+        ActiveTouchInput = inputType == Enum.UserInputType.Touch and inputObject or nil
+        SetActiveHandle(handleIndex)
+
+        return Enum.ContextActionResult.Sink
+    end
+
+    if ActiveHandle then
+        if inputType == Enum.UserInputType.MouseMovement
+            and ActiveInputType == Enum.UserInputType.MouseButton1 then
+            return Enum.ContextActionResult.Sink
+        end
+
+        if inputType == ActiveInputType then
+            if inputType == Enum.UserInputType.Touch
+                and ActiveTouchInput
+                and inputObject ~= ActiveTouchInput then
+                return Enum.ContextActionResult.Pass
+            end
+
+            if inputState == Enum.UserInputState.End
+                or inputState == Enum.UserInputState.Cancel then
+                SetActiveHandle(nil)
+                ActiveInputType = nil
+                ActiveTouchInput = nil
+            end
+
+            return Enum.ContextActionResult.Sink
+        end
+    end
+
+    return Enum.ContextActionResult.Pass
+end
+
+ContextActionService:BindActionAtPriority(
+    CaptureActionName,
+    CaptureInput,
+    false,
+    3000,
+    Enum.UserInputType.MouseButton1,
+    Enum.UserInputType.Touch,
+    Enum.UserInputType.MouseMovement
+)
 
 local Connection
 
@@ -205,6 +307,11 @@ getgenv().RotateVisualCleanup = function()
         Connection:Disconnect()
         Connection = nil
     end
+
+    ContextActionService:UnbindAction(CaptureActionName)
+    ActiveHandle = nil
+    ActiveInputType = nil
+    ActiveTouchInput = nil
 
     for _, handle in ipairs(Handles) do
         pcall(function() handle.Outline:Remove() end)
