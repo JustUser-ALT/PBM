@@ -1,11 +1,13 @@
 --[[
     RotateTool.lua
     JustUser-ALT/PBM
-    Visual prototype 1 — local-axis X/Y/Z rings.
+    Visual prototype 2 — six local-axis rotation handles.
 
     Test scope:
     - Reads the currently selected Build Mode block.
-    - Draws three local-axis rings using Drawing.
+    - Draws six colored circular handles around its pivot:
+      X = blue (left/right), Y = green (up/down), Z = red (front/back).
+    - Handles follow the block's local orientation.
     - Does not rotate blocks or change Build Mode.
     - Does not create or modify game UI.
 ]]
@@ -55,39 +57,59 @@ if not ClientState then
 end
 
 local Camera = workspace.CurrentCamera
-local SegmentCount = 64
-local Thickness = 4
+local HandleRadius = 9
+local OutlineRadius = 11
+local HandleDistance = 0
+local CurrentModel
 
+-- Axis colors: X blue, Y green, Z red.
 local AxisColors = {
-    Color3.fromRGB(255, 65, 65),
-    Color3.fromRGB(75, 255, 110),
-    Color3.fromRGB(75, 155, 255)
+    X = Color3.fromRGB(65, 155, 255),
+    Y = Color3.fromRGB(75, 235, 115),
+    Z = Color3.fromRGB(255, 75, 75)
 }
 
-local Rings = {}
+local HandleDefinitions = {
+    {Name = "Right", Axis = "X", Sign = 1},
+    {Name = "Left", Axis = "X", Sign = -1},
+    {Name = "Top", Axis = "Y", Sign = 1},
+    {Name = "Bottom", Axis = "Y", Sign = -1},
+    {Name = "Front", Axis = "Z", Sign = -1},
+    {Name = "Back", Axis = "Z", Sign = 1}
+}
 
-for axis = 1, 3 do
-    Rings[axis] = {}
+local Handles = {}
 
-    for segment = 1, SegmentCount do
-        local line = Drawing.new("Line")
-        line.Color = AxisColors[axis]
-        line.Thickness = Thickness
-        line.Transparency = 1
-        line.Visible = false
+for index, definition in ipairs(HandleDefinitions) do
+    local outline = Drawing.new("Circle")
+    outline.Color = Color3.fromRGB(15, 18, 24)
+    outline.Thickness = 2
+    outline.NumSides = 24
+    outline.Radius = OutlineRadius
+    outline.Filled = true
+    outline.Transparency = 1
+    outline.Visible = false
 
-        Rings[axis][segment] = line
-    end
+    local fill = Drawing.new("Circle")
+    fill.Color = AxisColors[definition.Axis]
+    fill.Thickness = 1
+    fill.NumSides = 24
+    fill.Radius = HandleRadius
+    fill.Filled = true
+    fill.Transparency = 1
+    fill.Visible = false
+
+    Handles[index] = {
+        Definition = definition,
+        Outline = outline,
+        Fill = fill
+    }
 end
 
-local CurrentModel
-local CurrentRadius = 3
-
-local function HideRings()
-    for axis = 1, 3 do
-        for _, line in ipairs(Rings[axis]) do
-            line.Visible = false
-        end
+local function HideHandles()
+    for _, handle in ipairs(Handles) do
+        handle.Outline.Visible = false
+        handle.Fill.Visible = false
     end
 end
 
@@ -105,51 +127,20 @@ local function SetModel(model)
     CurrentModel = model
 
     if not model then
-        HideRings()
+        HandleDistance = 0
+        HideHandles()
         return
     end
 
     local size = GetModelSize(model)
-    CurrentRadius = math.max(size.X, size.Y, size.Z) * 0.75 + 0.5
-end
-
-local function DrawRing(axis, center, basisA, basisB)
-    for i = 1, SegmentCount do
-        local a1 = ((i - 1) / SegmentCount) * math.pi * 2
-        local a2 = (i / SegmentCount) * math.pi * 2
-
-        local p1 = center + (
-            basisA * math.cos(a1) +
-            basisB * math.sin(a1)
-        ) * CurrentRadius
-
-        local p2 = center + (
-            basisA * math.cos(a2) +
-            basisB * math.sin(a2)
-        ) * CurrentRadius
-
-        local screen1, visible1 = Camera:WorldToViewportPoint(p1)
-        local screen2, visible2 = Camera:WorldToViewportPoint(p2)
-
-        local line = Rings[axis][i]
-
-        if visible1 and visible2
-            and screen1.Z > 0 and screen2.Z > 0 then
-
-            line.From = Vector2.new(screen1.X, screen1.Y)
-            line.To = Vector2.new(screen2.X, screen2.Y)
-            line.Visible = true
-        else
-            line.Visible = false
-        end
-    end
+    HandleDistance = math.max(size.X, size.Y, size.Z) * 0.75 + 1
 end
 
 local Connection
 
 Connection = RunService.RenderStepped:Connect(function()
     if not ClientState or not BuildModel.Parent then
-        HideRings()
+        HideHandles()
         return
     end
 
@@ -157,11 +148,11 @@ Connection = RunService.RenderStepped:Connect(function()
 
     if typeof(selected) ~= "Instance"
         or not selected:IsDescendantOf(BuildModel) then
-
         if CurrentModel then
             SetModel(nil)
+        else
+            HideHandles()
         end
-
         return
     end
 
@@ -174,21 +165,39 @@ Connection = RunService.RenderStepped:Connect(function()
         return
     end
 
+    Camera = workspace.CurrentCamera
+    if not Camera then
+        HideHandles()
+        return
+    end
+
     local pivot = CurrentModel:GetPivot()
     local center = pivot.Position
+    local axes = {
+        X = pivot.RightVector,
+        Y = pivot.UpVector,
+        Z = -pivot.LookVector
+    }
 
-    local right = pivot.RightVector
-    local up = pivot.UpVector
-    local look = -pivot.LookVector
+    for index, handle in ipairs(Handles) do
+        local definition = handle.Definition
+        local worldPosition = center
+            + axes[definition.Axis] * (HandleDistance * definition.Sign)
 
-    -- X: YZ plane
-    DrawRing(1, center, up, look)
+        local screenPosition, onScreen =
+            Camera:WorldToViewportPoint(worldPosition)
 
-    -- Y: XZ plane
-    DrawRing(2, center, right, look)
+        local visible = onScreen and screenPosition.Z > 0
 
-    -- Z: XY plane
-    DrawRing(3, center, right, up)
+        handle.Outline.Visible = visible
+        handle.Fill.Visible = visible
+
+        if visible then
+            local position = Vector2.new(screenPosition.X, screenPosition.Y)
+            handle.Outline.Position = position
+            handle.Fill.Position = position
+        end
+    end
 end)
 
 getgenv().RotateVisualCleanup = function()
@@ -197,17 +206,15 @@ getgenv().RotateVisualCleanup = function()
         Connection = nil
     end
 
-    for axis = 1, 3 do
-        for _, line in ipairs(Rings[axis]) do
-            pcall(function()
-                line:Remove()
-            end)
-        end
+    for _, handle in ipairs(Handles) do
+        pcall(function() handle.Outline:Remove() end)
+        pcall(function() handle.Fill:Remove() end)
     end
 
-    Rings = {}
+    Handles = {}
     CurrentModel = nil
 end
 
-print("[RotateTool] Visual prototype loaded")
+print("[RotateTool] Six-handle visual prototype loaded")
+print("[RotateTool] X = blue | Y = green | Z = red")
 print("[RotateTool] Select a block using Move or Resize")
