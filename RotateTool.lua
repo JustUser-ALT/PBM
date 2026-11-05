@@ -14,6 +14,7 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
 local ContextActionService = game:GetService("ContextActionService")
 
 local Player = Players.LocalPlayer
@@ -145,7 +146,8 @@ end
 
 local function GetScreenPosition(inputObject)
     local position = inputObject.Position
-    return Vector2.new(position.X, position.Y)
+    local inset = GuiService:GetGuiInset()
+    return Vector2.new(position.X - inset.X, position.Y - inset.Y)
 end
 
 local function FindHandleAt(position)
@@ -172,10 +174,12 @@ local function SetActiveHandle(index)
     for handleIndex, handle in ipairs(Handles) do
         local active = handleIndex == index
 
-        handle.Fill.Radius = active and 15 or HandleRadius
-        handle.Outline.Radius = active and 18 or OutlineRadius
-        handle.Fill.Transparency = active and 1 or 0.92
-        handle.Outline.Transparency = active and 1 or 0.85
+        handle.Fill.Radius = active and 16 or HandleRadius
+        handle.Outline.Radius = active and 19 or OutlineRadius
+        handle.Fill.Color = active and Color3.new(1, 1, 1) or AxisColors[handle.Definition.Axis]
+        handle.Outline.Color = active and Color3.fromRGB(20, 20, 20) or Color3.fromRGB(15, 18, 24)
+        handle.Fill.Thickness = active and 3 or 1
+        handle.Outline.Thickness = active and 3 or 2
     end
 end
 
@@ -202,11 +206,6 @@ local function CaptureInput(_, inputState, inputObject)
     end
 
     if ActiveHandle then
-        if inputType == Enum.UserInputType.MouseMovement
-            and ActiveInputType == Enum.UserInputType.MouseButton1 then
-            return Enum.ContextActionResult.Sink
-        end
-
         if inputType == ActiveInputType then
             if inputType == Enum.UserInputType.Touch
                 and ActiveTouchInput
@@ -234,8 +233,7 @@ ContextActionService:BindActionAtPriority(
     false,
     3000,
     Enum.UserInputType.MouseButton1,
-    Enum.UserInputType.Touch,
-    Enum.UserInputType.MouseMovement
+    Enum.UserInputType.Touch
 )
 
 local Connection
