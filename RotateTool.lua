@@ -57,8 +57,8 @@ if not ClientState then
 end
 
 local Camera = workspace.CurrentCamera
-local HandleRadius = 9
-local OutlineRadius = 11
+local HandleRadius = 11
+local OutlineRadius = 13
 local HandleDistance = 0
 local CurrentModel
 
@@ -133,7 +133,7 @@ local function SetModel(model)
     end
 
     local size = GetModelSize(model)
-    HandleDistance = math.max(size.X, size.Y, size.Z) * 0.75 + 1
+    HandleDistance = math.max(size.X, size.Y, size.Z) * 0.65 + 0.5
 end
 
 local Connection
