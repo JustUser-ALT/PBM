@@ -61,8 +61,8 @@ if not ClientState then
 end
 
 local Camera = workspace.CurrentCamera
-local HandleRadius = 11
-local OutlineRadius = 13
+local HandleRadius = 13
+local OutlineRadius = 15
 local HandleDistance = 0
 local CurrentModel
 
@@ -82,6 +82,16 @@ local HandleDefinitions = {
     {Name = "Back", Axis = "Z", Sign = 1}
 }
 
+local VersionLabel = Drawing.new("Text")
+VersionLabel.Text = VERSION
+VersionLabel.Size = 16
+VersionLabel.Position = Vector2.new(12, 12)
+VersionLabel.Color = Color3.fromRGB(255, 255, 255)
+VersionLabel.Outline = true
+VersionLabel.Center = false
+VersionLabel.Visible = true
+pcall(function() VersionLabel.ZIndex = 100 end)
+
 local Handles = {}
 local ActiveHandle
 local ActiveInputType
@@ -94,7 +104,8 @@ local LastPointerAngle
 local TotalDragAngle = 0
 local CurrentPointer
 local CaptureActionName = "JustX_RotateHandleCapture"
-local HitRadius = 23
+local HitRadius = 26
+local VERSION = "V1.1"
 
 for index, definition in ipairs(HandleDefinitions) do
     local outline = Drawing.new("Circle")
@@ -264,8 +275,8 @@ local function SetActiveHandle(index)
     for handleIndex, handle in ipairs(Handles) do
         local active = handleIndex == index
 
-        handle.Fill.Radius = active and 16 or HandleRadius
-        handle.Outline.Radius = active and 19 or OutlineRadius
+        handle.Fill.Radius = active and 18 or HandleRadius
+        handle.Outline.Radius = active and 21 or OutlineRadius
         handle.Fill.Color = active and Color3.new(1, 1, 1) or AxisColors[handle.Definition.Axis]
         handle.Outline.Color = active and Color3.fromRGB(20, 20, 20) or Color3.fromRGB(15, 18, 24)
         handle.Fill.Thickness = active and 3 or 1
@@ -309,6 +320,13 @@ local function CaptureInput(_, inputState, inputObject)
                 and ActiveTouchInput
                 and inputObject ~= ActiveTouchInput then
                 return Enum.ContextActionResult.Pass
+            end
+
+            if inputState == Enum.UserInputState.Change then
+                if inputType == Enum.UserInputType.Touch then
+                    CurrentPointer = GetScreenPosition(inputObject)
+                end
+                return Enum.ContextActionResult.Sink
             end
 
             if inputState == Enum.UserInputState.End
@@ -438,10 +456,12 @@ getgenv().RotateVisualCleanup = function()
         pcall(function() handle.Fill:Remove() end)
     end
 
+    pcall(function() VersionLabel:Remove() end)
+
     Handles = {}
     CurrentModel = nil
 end
 
-print("[RotateTool] Six-handle rotation test loaded")
+print("[RotateTool] " .. VERSION .. " loaded")
 print("[RotateTool] Drag a handle around the block to rotate its local axis")
 print("[RotateTool] X = blue | Y = green | Z = red")
