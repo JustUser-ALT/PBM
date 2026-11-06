@@ -180,6 +180,7 @@ assert(Drawing, "[RotateTest] Drawing API unavailable")
 local BuildModel = workspace:WaitForChild("BuildModel")
 local Camera = workspace.CurrentCamera
 local VERSION = "V1.6"
+local RotationStep = 0.1
 local HandleRadius = 13
 local OutlineRadius = 15
 
@@ -198,6 +199,49 @@ local HandleDefinitions = {
     {Name = "Front", Axis = "Z", Sign = -1},
     {Name = "Back", Axis = "Z", Sign = 1}
 }
+
+local StepGui = Instance.new("ScreenGui")
+StepGui.Name = "JustXRotateStepSettings"
+StepGui.ResetOnSpawn = false
+StepGui.IgnoreGuiInset = true
+StepGui.DisplayOrder = 10000
+
+local StepInput = Instance.new("TextBox")
+StepInput.Name = "StepInput"
+StepInput.Size = UDim2.fromOffset(55, 25)
+StepInput.Position = UDim2.new(1, -65, 0.55, 0)
+StepInput.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+StepInput.BorderSizePixel = 0
+StepInput.TextColor3 = Color3.new(1, 1, 1)
+StepInput.Text = "0.1"
+StepInput.PlaceholderText = "0.1"
+StepInput.Font = Enum.Font.Gotham
+StepInput.TextSize = 12
+StepInput.ClearTextOnFocus = false
+StepInput.Parent = StepGui
+
+local StepCorner = Instance.new("UICorner")
+StepCorner.CornerRadius = UDim.new(0, 5)
+StepCorner.Parent = StepInput
+
+local GuiParent
+pcall(function()
+    if type(gethui) == "function" then
+        GuiParent = gethui()
+    end
+end)
+StepGui.Parent = GuiParent or game:GetService("CoreGui")
+
+StepInput.FocusLost:Connect(function()
+    local value = tonumber(StepInput.Text)
+    if not value then
+        StepInput.Text = tostring(RotationStep)
+        return
+    end
+
+    RotationStep = math.clamp(value, 0.1, 10)
+    StepInput.Text = tostring(RotationStep)
+end)
 
 local VersionLabel = Drawing.new("Text")
 VersionLabel.Text = VERSION
@@ -398,7 +442,9 @@ local function ApplyDrag(position)
     LastPointerAngle = angle
     TotalDragAngle = TotalDragAngle - delta
 
-    local rotation = CFrame.fromAxisAngle(DragAxisWorld, TotalDragAngle)
+    local stepRadians = math.rad(RotationStep)
+    local snappedAngle = math.round(TotalDragAngle / stepRadians) * stepRadians
+    local rotation = CFrame.fromAxisAngle(DragAxisWorld, snappedAngle)
     local pivotPosition = DragStartPivot.Position
     CurrentModel:PivotTo(
         CFrame.new(pivotPosition)
@@ -479,6 +525,10 @@ local function CaptureInput(_, inputState, inputObject)
     local inputType = inputObject.UserInputType
 
     if inputState == Enum.UserInputState.Begin then
+        if UserInputService:GetFocusedTextBox() then
+            return Enum.ContextActionResult.Pass
+        end
+
         if inputType ~= Enum.UserInputType.MouseButton1
             and inputType ~= Enum.UserInputType.Touch then
             return Enum.ContextActionResult.Pass
@@ -846,6 +896,7 @@ function RotateMode:Destroy()
         pcall(function() line:Remove() end)
     end
     pcall(function() VersionLabel:Remove() end)
+    pcall(function() StepGui:Destroy() end)
 
     self.Active = false
     self.Target = nil
@@ -1085,6 +1136,7 @@ print("[RotateTest] Toolbar button: OK")
 print("[RotateTest] Hover outline: READY")
 print("[RotateTest] Six rotation handles: READY")
 print("[RotateTest] Drag rotation + CommitMove: READY")
+print("[RotateTest] Angle step TextBox: READY (0.1 - 10 degrees)")
 print("[RotateTest] Main action dispatch: OK")
 print("[RotateTest] Title listener: READY")
 print("[RotateTest] Select a block, then drag one of the six handles")
