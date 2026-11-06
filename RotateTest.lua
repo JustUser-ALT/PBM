@@ -32,7 +32,146 @@ local BoxSelectionAdornment = require(
 
 local Env = getgenv()
 
--- Rotation gizmo uses the Drawing-based handles from RotateTool.lua.
+--==================================================
+-- CLEANUP PREVIOUS TEST
+--==================================================
+
+if type(Env.RotateTestCleanup) == "function" then
+    pcall(Env.RotateTestCleanup)
+end
+
+--==================================================
+-- FIND CLIENT STATE
+--==================================================
+
+local ClientState
+
+for attempt = 1, 100 do
+    for _, object in ipairs(getgc(true)) do
+        if type(object) == "table"
+        and rawget(object, "ScreenGui") == BuildModeGui
+        and rawget(object, "Toolbar") then
+            ClientState = object
+            break
+        end
+    end
+
+    if ClientState then
+        break
+    end
+
+    task.wait(0.1)
+end
+
+assert(ClientState, "[RotateTest] ClientState not found")
+
+--==================================================
+-- FIND BUILDING MODE
+--==================================================
+
+local BuildingModeModule = BuildModeFolder:WaitForChild("BuildingMode")
+local BuildingMode = require(BuildingModeModule)
+
+assert(
+    type(BuildingMode.SetMode) == "function",
+    "[RotateTest] BuildingMode.SetMode missing"
+)
+
+print("[RotateTest] BuildingMode found:", BuildingMode)
+
+--==================================================
+-- FIND ENUMERATION
+--==================================================
+
+local Enumeration = require(BuildModeFolder:WaitForChild("Common"):WaitForChild("Enumeration"))
+assert(type(Enumeration) == "table" and Enumeration.BuildingMode, "[RotateTest] Enumeration module invalid")
+
+local BuildingModeEnum = Enumeration.BuildingMode
+local EnumItems = rawget(BuildingModeEnum, "__items")
+local EnumOrdered = rawget(BuildingModeEnum, "__ordered")
+
+assert(type(EnumItems) == "table", "[RotateTest] Enum items table not found")
+assert(type(EnumOrdered) == "table", "[RotateTest] Enum ordered table not found")
+
+local RotateEnum = rawget(EnumItems, "Rotate")
+local CreatedEnum = false
+
+if not RotateEnum then
+    RotateEnum = {
+        Name = "Rotate",
+        Value = 9,
+        EnumerationType = "BuildingMode"
+    }
+
+    setmetatable(RotateEnum, {
+        __tostring = function(self)
+            return string.format("Enumeration.%s.%s", self.EnumerationType, self.Name)
+        end
+    })
+
+    rawset(EnumItems, "Rotate", RotateEnum)
+    table.insert(EnumOrdered, RotateEnum)
+    CreatedEnum = true
+end
+
+print("[RotateTest] Enum registered:", tostring(RotateEnum))
+
+--==================================================
+-- NATIVE PLACE-BLOCK TITLE
+-- BuildModeClient's native title table is local to its event callback.
+-- SetTitle is applied after the native BuildingModeChanged listeners.
+--==================================================
+
+local TitlePatchReady = true
+
+--==================================================
+-- REGISTER ROTATE ICON
+--==================================================
+
+local RotateIcon = IconsFolder:FindFirstChild("Rotate")
+local CreatedIcon = false
+
+if not RotateIcon then
+    RotateIcon = IconsFolder:WaitForChild("Move"):Clone()
+    RotateIcon.Name = "Rotate"
+    RotateIcon.Parent = IconsFolder
+    CreatedIcon = true
+end
+
+--==================================================
+-- FIND RENDER LOOP MODES
+--==================================================
+
+local RenderModes
+
+for _, connection in ipairs(getconnections(RunService.RenderStepped)) do
+    local fn = connection.Function
+
+    if type(fn) == "function" then
+        local success, upvalues = pcall(debug.getupvalues, fn)
+
+        if success and type(upvalues) == "table" then
+            for _, value in pairs(upvalues) do
+                if type(value) == "table"
+                and rawget(value, "Move")
+                and rawget(value, "Resize")
+                and rawget(value, "Select")
+                and rawget(value, "ColorPick") then
+                    RenderModes = value
+                    break
+                end
+            end
+        end
+    end
+
+    if RenderModes then
+        break
+    end
+end
+
+assert(RenderModes, "[RotateTest] RenderLoop modes table not found")
+
+-- Rotation gizmo adapted from RotateTool.lua.
 assert(Drawing, "[RotateTest] Drawing API unavailable")
 local BuildModel = workspace:WaitForChild("BuildModel")
 local Camera = workspace.CurrentCamera
@@ -40,7 +179,6 @@ local VERSION = "V1.6"
 local HandleRadius = 13
 local OutlineRadius = 15
 
--- Rotation gizmo visuals and interaction, adapted from RotateTool.lua.
 -- Axis colors: X blue, Y green, Z red.
 local AxisColors = {
     X = Color3.fromRGB(65, 155, 255),
@@ -469,9 +607,7 @@ local RotateMode = {
     ClientState = nil,
     Placement = nil,
     Outline = nil,
-    Target = nil,
-    Handles = Handles,
-    RotationRing = RotationRing
+    Target = nil
 }
 
 function RotateMode:Init(clientState)
