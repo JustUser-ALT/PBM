@@ -18,7 +18,7 @@ local ModesFolder = BuildModeFolder:WaitForChild("Modes")
 local IconsFolder = BuildModeFolder:WaitForChild("Resources"):WaitForChild("BuildingModeIcon")
 local EventsFolder = BuildModeFolder:WaitForChild("Events")
 local ChangedEvent = EventsFolder:WaitForChild("BuildingModeChanged")
-local ShowHint = EventsFolder:WaitForChild("ShowHint")
+local ShowHint = RS:WaitForChild("Events"):WaitForChild("ShowHint")
 
 local Env = getgenv()
 
