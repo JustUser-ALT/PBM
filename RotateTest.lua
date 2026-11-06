@@ -701,6 +701,22 @@ function RotateMode:Update(dt, clientState)
         self.Target = nil
 
         UpdateSelectedModel(selected)
+
+        -- Touch End/Cancel can be missed by the bound action on some mobile clients.
+        -- Watch the original InputObject as a fallback so the active marker never stays white.
+        if ActiveInputType == Enum.UserInputType.Touch
+            and ActiveTouchInput
+            and (ActiveTouchInput.UserInputState == Enum.UserInputState.End
+                or ActiveTouchInput.UserInputState == Enum.UserInputState.Cancel) then
+            if IsDragging then
+                FinishDrag()
+            end
+            SetActiveHandle(nil)
+            ActiveInputType = nil
+            ActiveTouchInput = nil
+            CurrentPointer = nil
+        end
+
         if ActiveHandle and ActiveInputType == Enum.UserInputType.Touch and ActiveTouchInput then
             CurrentPointer = GetScreenPosition(ActiveTouchInput)
         end
