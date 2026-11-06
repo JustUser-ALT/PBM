@@ -20,6 +20,14 @@ local EventsFolder = BuildModeFolder:WaitForChild("Events")
 local ChangedEvent = EventsFolder:WaitForChild("BuildingModeChanged")
 local ShowHint = RS:WaitForChild("Events"):WaitForChild("ShowHint")
 
+-- Independent hover raycast and outline modules.
+local PlacementLogic = require(BuildModeFolder:WaitForChild("PlacementLogic"))
+local BoxSelectionAdornment = require(
+    RS:WaitForChild("Packages")
+        :WaitForChild("CustomAdornments")
+        :WaitForChild("BoxSelectionAdornment")
+)
+
 local Env = getgenv()
 
 --==================================================
@@ -221,45 +229,127 @@ end
 assert(RenderModes, "[RotateTest] RenderLoop modes table not found")
 
 --==================================================
--- ROTATE MODE TEST STUB
--- Keep gizmo implementation separate until integration is stable.
+-- ROTATE MODE
+-- Independent hover outline only; rotation gizmo remains unimplemented.
 --==================================================
 
 local RotateMode = {
     Initialized = false,
     Active = false,
-    ClientState = nil
+    ClientState = nil,
+    Placement = nil,
+    Outline = nil,
+    Target = nil
 }
 
 function RotateMode:Init(clientState)
     self.ClientState = clientState
+
+    self.Placement = PlacementLogic.new()
+    self.Outline = BoxSelectionAdornment.new()
+
+    local adornmentParent = BuildModeGui:WaitForChild("Frame"):WaitForChild("Adornment")
+
+    self.Outline:SetParent(adornmentParent)
+    self.Outline:SetColor(Color3.fromRGB(170, 85, 255))
+    self.Outline:SetThickness(0.03)
+    self.Outline:SetAdornee(nil)
+
     self.Initialized = true
-    print("[RotateTest] RotateMode.Init")
+    print("[RotateTest] RotateMode.Init; hover outline ready")
 end
 
 function RotateMode:Enter(clientState)
     self.ClientState = clientState or self.ClientState
     self.Active = true
+    self.Target = nil
+
+    if self.Outline then
+        pcall(function()
+            self.Outline:SetAdornee(nil)
+        end)
+    end
+
     print("[RotateTest] RotateMode.Enter")
 end
 
 function RotateMode:Exit()
     self.Active = false
+    self.Target = nil
+
+    if self.Outline then
+        pcall(function()
+            self.Outline:SetAdornee(nil)
+        end)
+    end
+
     print("[RotateTest] RotateMode.Exit")
 end
 
 function RotateMode:Update(dt, clientState)
-    if not self.Active then
+    if not self.Active or not self.Placement or not self.Outline then
         return
     end
-    -- Rotation gizmo will be integrated after toolbar testing.
+
+    self.ClientState = clientState or self.ClientState
+
+    local raycastOk, result = pcall(function()
+        return self.Placement:Raycast()
+    end)
+
+    local block = nil
+
+    if raycastOk and result and result.Instance then
+        local hit = result.Instance
+        local candidate = hit.Parent
+        local buildModel = workspace:FindFirstChild("BuildModel")
+
+        if candidate
+        and candidate:IsA("Model")
+        and buildModel
+        and candidate.Parent == buildModel then
+            block = candidate
+        end
+    end
+
+    if block ~= self.Target then
+        self.Target = block
+
+        local outlineOk, outlineError = pcall(function()
+            self.Outline:SetAdornee(block)
+        end)
+
+        if not outlineOk then
+            warn("[RotateTest] Hover outline error:", outlineError)
+        else
+            print(
+                "[RotateTest] Hover target:",
+                block and block:GetFullName() or "nil"
+            )
+        end
+    end
 end
 
 function RotateMode:Action(clientState)
     if not self.Active then
         return
     end
-    -- Rotation input will be integrated after toolbar testing.
+    -- Rotation input will be integrated after hover selection testing.
+end
+
+function RotateMode:Destroy()
+    self.Active = false
+    self.Target = nil
+
+    if self.Outline then
+        pcall(function()
+            self.Outline:Destroy()
+        end)
+        self.Outline = nil
+    end
+
+    self.Placement = nil
+    self.Initialized = false
 end
 
 local PreviousRenderMode = rawget(RenderModes, "Rotate")
@@ -372,6 +462,10 @@ local function Cleanup()
         end)
     end
 
+    pcall(function()
+        RotateMode:Destroy()
+    end)
+
     if BuildingMode:Get() == RotateEnum then
         pcall(function()
             BuildingMode:SetMode(Enumeration.BuildingMode.None)
@@ -430,6 +524,7 @@ print("[RotateTest] Enum: OK")
 print("[RotateTest] Icon: OK")
 print("[RotateTest] RenderLoop: OK")
 print("[RotateTest] Toolbar button: OK")
+print("[RotateTest] Hover outline: READY")
 print("[RotateTest] Title patch:", PatchedTitle)
 print("[RotateTest] Click Rotate to test")
 print("================================")
