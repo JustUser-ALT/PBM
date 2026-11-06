@@ -443,7 +443,7 @@ local function FinishDrag()
                 warn("[RotateTool] CommitMove failed: " .. tostring(err))
             end
         else
-            warn("[RotateTool] ReplicatedStorage.Functions.CommitMove not found")
+            warn("[RotateTool] RS.Functions.CommitMove not found")
         end
     end
 
@@ -598,7 +598,7 @@ end
 
 --==================================================
 -- ROTATE MODE
--- Independent hover outline only; rotation gizmo remains unimplemented.
+-- Selected block, six-axis rotation gizmo, drag handling and save commit.
 --==================================================
 
 local RotateMode = {
@@ -1051,7 +1051,9 @@ print("[RotateTest] Icon: OK")
 print("[RotateTest] RenderLoop: OK")
 print("[RotateTest] Toolbar button: OK")
 print("[RotateTest] Hover outline: READY")
+print("[RotateTest] Six rotation handles: READY")
+print("[RotateTest] Drag rotation + CommitMove: READY")
 print("[RotateTest] Main action dispatch: OK")
 print("[RotateTest] Title listener: READY")
-print("[RotateTest] Click Rotate to test")
+print("[RotateTest] Select a block, then drag one of the six handles")
 print("================================")
