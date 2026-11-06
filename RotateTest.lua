@@ -115,71 +115,12 @@ end
 print("[RotateTest] Enum registered:", tostring(RotateEnum))
 
 --==================================================
--- FIX NATIVE PLACE-BLOCK TITLE
--- BuildModeClient calls SetTitle("place_block", titles[mode]).
--- Add the missing Rotate title to the native title lookup table.
+-- NATIVE PLACE-BLOCK TITLE
+-- BuildModeClient's native title table is local to its event callback.
+-- SetTitle is applied after the native BuildingModeChanged listeners.
 --==================================================
 
-local BuildEnum = BuildingModeEnum.Build
-local DestroyEnum = BuildingModeEnum.Destroy
-local ResizeEnum = BuildingModeEnum.Resize
-local MoveEnum = BuildingModeEnum.Move
-local ColorPickEnum = BuildingModeEnum.ColorPick
-local ColorFillEnum = BuildingModeEnum.ColorFill
-
-local TitleTable
-local TitleTableScore = 0
-
-for _, fn in ipairs(getgc(true)) do
-    if type(fn) == "function" then
-        local infoOk, info = pcall(debug.getinfo, fn)
-        local source = infoOk and info and info.source or ""
-
-        if string.find(source, "BuildModeClient", 1, true) then
-            for upvalueIndex = 1, 16 do
-                local upvalueOk, value = pcall(debug.getupvalue, fn, upvalueIndex)
-
-                if not upvalueOk or value == nil then
-                    break
-                end
-
-                if type(value) == "table" then
-                    local score = 0
-
-                    for _, enumItem in ipairs({
-                        BuildEnum,
-                        DestroyEnum,
-                        ResizeEnum,
-                        MoveEnum,
-                        ColorPickEnum,
-                        ColorFillEnum
-                    }) do
-                        if enumItem and type(rawget(value, enumItem)) == "string" then
-                            score = score + 1
-                        end
-                    end
-
-                    if score > TitleTableScore then
-                        TitleTable = value
-                        TitleTableScore = score
-                    end
-                end
-            end
-        end
-    end
-end
-
-local PreviousRotateTitle
-local PatchedTitle = false
-
-if TitleTable and TitleTableScore >= 3 then
-    PreviousRotateTitle = rawget(TitleTable, RotateEnum)
-    rawset(TitleTable, RotateEnum, "Rotate")
-    PatchedTitle = true
-    print("[RotateTest] Native Rotate title patched; matched entries:", TitleTableScore)
-else
-    warn("[RotateTest] Could not identify native title table; title fix not applied")
-end
+local TitlePatchReady = true
 
 --==================================================
 -- REGISTER ROTATE ICON
@@ -357,6 +298,29 @@ RenderModes.Rotate = RotateMode
 RotateMode:Init(ClientState)
 
 --==================================================
+-- ROUTE THE MAIN PLACE-BLOCK BUTTON TO ROTATE
+-- Preserve the original dispatcher for every native mode.
+--==================================================
+
+local OriginalPlaceBlockAction = ClientState.PlaceBlockAction
+assert(
+    type(OriginalPlaceBlockAction) == "function",
+    "[RotateTest] ClientState.PlaceBlockAction missing"
+)
+
+local function RotatePlaceBlockAction(self, ...)
+    local currentMode = BuildingMode:Get()
+
+    if currentMode and currentMode.Name == "Rotate" then
+        return RotateMode:Action(self, ...)
+    end
+
+    return OriginalPlaceBlockAction(self, ...)
+end
+
+ClientState.PlaceBlockAction = RotatePlaceBlockAction
+
+--==================================================
 -- FIND NATIVE TOOLBAR
 --==================================================
 
@@ -434,6 +398,19 @@ Connect(ChangedEvent.Event:Connect(function(modeName)
         if not RotateMode.Active then
             RotateMode:Enter(ClientState)
         end
+
+        -- BuildModeClient has no native title for the custom enum item.
+        -- Defer until its listener has attempted the native SetTitle call.
+        task.defer(function()
+            if not Cleaned and BuildingMode:Get() == RotateEnum then
+                local ok, err = pcall(function()
+                    CAS:SetTitle("place_block", "Rotate")
+                end)
+                if not ok then
+                    warn("[RotateTest] Could not set main button title:", err)
+                end
+            end
+        end)
     elseif RotateMode.Active then
         print("[RotateTest] Another mode selected:", modeName)
         RotateMode:Exit()
@@ -478,6 +455,10 @@ local function Cleanup()
 
     if rawget(RenderModes, "Rotate") == RotateMode then
         RenderModes.Rotate = PreviousRenderMode
+    end
+
+    if ClientState.PlaceBlockAction == RotatePlaceBlockAction then
+        ClientState.PlaceBlockAction = OriginalPlaceBlockAction
     end
 
     if Slots[7] and Slots[7].Instance == Button then
