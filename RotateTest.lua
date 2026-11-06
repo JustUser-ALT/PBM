@@ -77,20 +77,8 @@ assert(BuildingMode, "[RotateTest] BuildingMode object not found")
 -- FIND ENUMERATION
 --==================================================
 
-local Enumeration
-
-for _, object in ipairs(getgc(true)) do
-    if type(object) == "table" then
-        local enumTypes = rawget(object, "_EnumTypes")
-
-        if enumTypes and enumTypes.BuildingMode then
-            Enumeration = object
-            break
-        end
-    end
-end
-
-assert(Enumeration, "[RotateTest] Enumeration not found")
+local Enumeration = require(BuildModeFolder:WaitForChild("Common"):WaitForChild("Enumeration"))
+assert(type(Enumeration) == "table" and Enumeration.BuildingMode, "[RotateTest] Enumeration module invalid")
 
 local BuildingModeEnum = Enumeration.BuildingMode
 local EnumItems = rawget(BuildingModeEnum, "__items")
