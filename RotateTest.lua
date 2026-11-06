@@ -431,8 +431,12 @@ end))
 Connect(ChangedEvent.Event:Connect(function(modeName)
     if modeName == "Rotate" then
         print("[RotateTest] BuildingModeChanged: Rotate")
+        if not RotateMode.Active then
+            RotateMode:Enter(ClientState)
+        end
     elseif RotateMode.Active then
         print("[RotateTest] Another mode selected:", modeName)
+        RotateMode:Exit()
     end
 end))
 
