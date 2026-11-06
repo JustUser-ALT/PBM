@@ -19,6 +19,8 @@ local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local VERSION = "V1.2"
+
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 local BuildGui = PlayerGui:WaitForChild("BuildModeGui")
@@ -35,7 +37,10 @@ if not Drawing then
 end
 
 -- Find the live BuildModeClient state.
+-- Only ScreenGui identity is required; Placement/MoveHandles are not used here.
 local ClientState
+local StateCandidates = {}
+local GuiTables = {}
 
 for _, object in ipairs(getgc(true)) do
     if typeof(object) == "table" then
@@ -43,20 +48,63 @@ for _, object in ipairs(getgc(true)) do
             return rawget(object, "ScreenGui")
         end)
 
-        if ok and gui == BuildGui then
-            local hasPlacement = rawget(object, "Placement") ~= nil
-            local hasMove = rawget(object, "MoveHandles") ~= nil
-
-            if hasPlacement and hasMove then
-                ClientState = object
-                break
+        if ok and gui ~= nil then
+            table.insert(GuiTables, {Object = object, Gui = gui})
+            if gui == BuildGui then
+                table.insert(StateCandidates, object)
             end
         end
     end
 end
 
+if #StateCandidates > 0 then
+    local bestScore = -1
+
+    for _, candidate in ipairs(StateCandidates) do
+        local score = 0
+        if rawget(candidate, "SelectedBlock") ~= nil then score = score + 4 end
+        if rawget(candidate, "Placement") ~= nil then score = score + 1 end
+        if rawget(candidate, "MoveHandles") ~= nil then score = score + 1 end
+
+        if score > bestScore then
+            bestScore = score
+            ClientState = candidate
+        end
+    end
+
+    print("[RotateTool] BuildModeClient candidates: " .. tostring(#StateCandidates))
+    if #StateCandidates > 1 then
+        for index, candidate in ipairs(StateCandidates) do
+            local keys = {}
+            for key in pairs(candidate) do
+                if #keys >= 20 then
+                    table.insert(keys, "...")
+                    break
+                end
+                table.insert(keys, tostring(key))
+            end
+            print("[RotateTool] Candidate " .. tostring(index) .. " keys: " .. table.concat(keys, ", "))
+        end
+    end
+else
+    warn("[RotateTool] Exact BuildModeGui state not found. Tables containing ScreenGui:")
+    for index, entry in ipairs(GuiTables) do
+        if index > 12 then
+            warn("[RotateTool] Additional ScreenGui tables omitted")
+            break
+        end
+
+        local gui = entry.Gui
+        local description = tostring(gui)
+        pcall(function()
+            description = gui:GetFullName()
+        end)
+        warn("[RotateTool] ScreenGui table " .. tostring(index) .. ": " .. description)
+    end
+end
+
 if not ClientState then
-    warn("[RotateTool] BuildModeClient state not found")
+    warn("[RotateTool] BuildModeClient state not found; cannot read SelectedBlock")
     return
 end
 
@@ -105,7 +153,6 @@ local TotalDragAngle = 0
 local CurrentPointer
 local CaptureActionName = "JustX_RotateHandleCapture"
 local HitRadius = 26
-local VERSION = "V1.1"
 
 for index, definition in ipairs(HandleDefinitions) do
     local outline = Drawing.new("Circle")
