@@ -59,19 +59,15 @@ assert(ClientState, "[RotateTest] ClientState not found")
 -- FIND BUILDING MODE
 --==================================================
 
-local BuildingMode
+local BuildingModeModule = BuildModeFolder:WaitForChild("BuildingMode")
+local BuildingMode = require(BuildingModeModule)
 
-for _, object in ipairs(getgc(true)) do
-    if type(object) == "table"
-    and type(rawget(object, "SetMode")) == "function"
-    and type(rawget(object, "Get")) == "function"
-    and type(rawget(object, "_stack")) == "table" then
-        BuildingMode = object
-        break
-    end
-end
+assert(
+    type(BuildingMode.SetMode) == "function",
+    "[RotateTest] BuildingMode.SetMode missing"
+)
 
-assert(BuildingMode, "[RotateTest] BuildingMode object not found")
+print("[RotateTest] BuildingMode found:", BuildingMode)
 
 --==================================================
 -- FIND ENUMERATION
