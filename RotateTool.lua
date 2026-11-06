@@ -16,6 +16,8 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
 local ContextActionService = game:GetService("ContextActionService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
@@ -84,6 +86,13 @@ local Handles = {}
 local ActiveHandle
 local ActiveInputType
 local ActiveTouchInput
+local IsDragging = false
+local DragStartPivot
+local DragAxisWorld
+local DragCenterScreen
+local LastPointerAngle
+local TotalDragAngle = 0
+local CurrentPointer
 local CaptureActionName = "JustX_RotateHandleCapture"
 local HitRadius = 23
 
@@ -152,62 +161,101 @@ local function GetScreenPosition(inputObject)
     return Vector2.new(position.X + inset.X, position.Y + inset.Y)
 end
 
-local function FindHandleAt(position, inputObject)
+local function FindHandleAt(position)
     local closestIndex
     local closestDistance = HitRadius
 
-    warn(string.format(
-        "[RotateTool][DIAG] Input=%s | Raw=(%.1f, %.1f) | Tested=(%.1f, %.1f) | HitRadius=%.1f",
-        tostring(inputObject.UserInputType),
-        inputObject.Position.X,
-        inputObject.Position.Y,
-        position.X,
-        position.Y,
-        HitRadius
-    ))
-
     for index, handle in ipairs(Handles) do
         if handle.Fill.Visible then
-            local handlePosition = handle.Fill.Position
-            local distance = (handlePosition - position).Magnitude
-
-            warn(string.format(
-                "[RotateTool][DIAG] Handle[%d] %s/%s | Visible=true | Screen=(%.1f, %.1f) | Distance=%.1f",
-                index,
-                handle.Definition.Axis,
-                handle.Definition.Name,
-                handlePosition.X,
-                handlePosition.Y,
-                distance
-            ))
-
+            local distance = (handle.Fill.Position - position).Magnitude
             if distance <= closestDistance then
                 closestDistance = distance
                 closestIndex = index
             end
-        else
-            warn(string.format(
-                "[RotateTool][DIAG] Handle[%d] %s/%s | Visible=false",
-                index,
-                handle.Definition.Axis,
-                handle.Definition.Name
-            ))
         end
     end
 
-    if closestIndex then
-        local definition = Handles[closestIndex].Definition
-        warn(string.format(
-            "[RotateTool][DIAG] RESULT=%s/%s | Distance=%.1f",
-            definition.Axis,
-            definition.Name,
-            closestDistance
-        ))
-    else
-        warn("[RotateTool][DIAG] RESULT=NO_HANDLE")
+    return closestIndex
+end
+
+local function GetPointerAngle(position, center)
+    local offset = position - center
+    return math.atan2(offset.Y, offset.X)
+end
+
+local function ApplyDrag(position)
+    if not IsDragging or not DragStartPivot or not DragAxisWorld or not DragCenterScreen then
+        return
     end
 
-    return closestIndex
+    local angle = GetPointerAngle(position, DragCenterScreen)
+    local delta = angle - LastPointerAngle
+
+    if delta > math.pi then
+        delta = delta - math.pi * 2
+    elseif delta < -math.pi then
+        delta = delta + math.pi * 2
+    end
+
+    LastPointerAngle = angle
+    TotalDragAngle = TotalDragAngle - delta
+
+    local rotation = CFrame.fromAxisAngle(DragAxisWorld, TotalDragAngle)
+    local pivotPosition = DragStartPivot.Position
+    CurrentModel:PivotTo(
+        CFrame.new(pivotPosition)
+        * rotation
+        * CFrame.new(-pivotPosition)
+        * DragStartPivot
+    )
+end
+
+local function BeginDrag(handleIndex, position)
+    local definition = Handles[handleIndex].Definition
+    DragStartPivot = CurrentModel:GetPivot()
+    DragAxisWorld = ({
+        X = DragStartPivot.RightVector,
+        Y = DragStartPivot.UpVector,
+        Z = -DragStartPivot.LookVector
+    })[definition.Axis]
+
+    local center, onScreen = Camera:WorldToViewportPoint(DragStartPivot.Position)
+    if not onScreen or center.Z <= 0 then
+        DragStartPivot = nil
+        DragAxisWorld = nil
+        return false
+    end
+
+    DragCenterScreen = Vector2.new(center.X, center.Y)
+    LastPointerAngle = GetPointerAngle(position, DragCenterScreen)
+    TotalDragAngle = 0
+    IsDragging = true
+    return true
+end
+
+local function FinishDrag()
+    if IsDragging and CurrentModel and CurrentModel.Parent then
+        local commitMove = ReplicatedStorage:FindFirstChild("Functions")
+            and ReplicatedStorage.Functions:FindFirstChild("CommitMove")
+
+        if commitMove then
+            local ok, err = pcall(function()
+                commitMove:InvokeServer(CurrentModel, CurrentModel:GetPivot())
+            end)
+            if not ok then
+                warn("[RotateTool] CommitMove failed: " .. tostring(err))
+            end
+        else
+            warn("[RotateTool] ReplicatedStorage.Functions.CommitMove not found")
+        end
+    end
+
+    IsDragging = false
+    DragStartPivot = nil
+    DragAxisWorld = nil
+    DragCenterScreen = nil
+    LastPointerAngle = nil
+    TotalDragAngle = 0
 end
 
 local function SetActiveHandle(index)
@@ -234,12 +282,8 @@ local function CaptureInput(_, inputState, inputObject)
             return Enum.ContextActionResult.Pass
         end
 
-        warn(string.format(
-            "[RotateTool][DIAG] CAS Begin received: %s",
-            tostring(inputType)
-        ))
-
-        local handleIndex = FindHandleAt(GetScreenPosition(inputObject), inputObject)
+        local pointer = GetScreenPosition(inputObject)
+        local handleIndex = FindHandleAt(pointer)
 
         if not handleIndex then
             return Enum.ContextActionResult.Pass
@@ -247,7 +291,14 @@ local function CaptureInput(_, inputState, inputObject)
 
         ActiveInputType = inputType
         ActiveTouchInput = inputType == Enum.UserInputType.Touch and inputObject or nil
+        CurrentPointer = pointer
         SetActiveHandle(handleIndex)
+        if not BeginDrag(handleIndex, pointer) then
+            SetActiveHandle(nil)
+            ActiveInputType = nil
+            ActiveTouchInput = nil
+            return Enum.ContextActionResult.Pass
+        end
 
         return Enum.ContextActionResult.Sink
     end
@@ -262,9 +313,11 @@ local function CaptureInput(_, inputState, inputObject)
 
             if inputState == Enum.UserInputState.End
                 or inputState == Enum.UserInputState.Cancel then
+                FinishDrag()
                 SetActiveHandle(nil)
                 ActiveInputType = nil
                 ActiveTouchInput = nil
+                CurrentPointer = nil
             end
 
             return Enum.ContextActionResult.Sink
@@ -283,9 +336,26 @@ ContextActionService:BindActionAtPriority(
     Enum.UserInputType.Touch
 )
 
+local InputChangedConnection = UserInputService.InputChanged:Connect(function(inputObject)
+    if ActiveHandle and ActiveInputType == Enum.UserInputType.MouseButton1
+        and inputObject.UserInputType == Enum.UserInputType.MouseMovement then
+        CurrentPointer = GetScreenPosition(inputObject)
+    elseif ActiveHandle and ActiveInputType == Enum.UserInputType.Touch
+        and ActiveTouchInput then
+        CurrentPointer = GetScreenPosition(ActiveTouchInput)
+    end
+end)
+
 local Connection
 
 Connection = RunService.RenderStepped:Connect(function()
+    if ActiveHandle and ActiveInputType == Enum.UserInputType.Touch and ActiveTouchInput then
+        CurrentPointer = GetScreenPosition(ActiveTouchInput)
+    end
+
+    if IsDragging and CurrentPointer then
+        ApplyDrag(CurrentPointer)
+    end
     if not ClientState or not BuildModel.Parent then
         HideHandles()
         return
@@ -352,7 +422,12 @@ getgenv().RotateVisualCleanup = function()
         Connection:Disconnect()
         Connection = nil
     end
+    if InputChangedConnection then
+        InputChangedConnection:Disconnect()
+        InputChangedConnection = nil
+    end
 
+    FinishDrag()
     ContextActionService:UnbindAction(CaptureActionName)
     ActiveHandle = nil
     ActiveInputType = nil
@@ -367,6 +442,6 @@ getgenv().RotateVisualCleanup = function()
     CurrentModel = nil
 end
 
-print("[RotateTool] Six-handle visual prototype loaded")
+print("[RotateTool] Six-handle rotation test loaded")
+print("[RotateTool] Drag a handle around the block to rotate its local axis")
 print("[RotateTool] X = blue | Y = green | Z = red")
-print("[RotateTool] Select a block using Move or Resize")
