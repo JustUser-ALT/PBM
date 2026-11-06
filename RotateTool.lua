@@ -150,19 +150,59 @@ local function GetScreenPosition(inputObject)
     return Vector2.new(position.X - inset.X, position.Y - inset.Y)
 end
 
-local function FindHandleAt(position)
+local function FindHandleAt(position, inputObject)
     local closestIndex
     local closestDistance = HitRadius
 
+    warn(string.format(
+        "[RotateTool][DIAG] Input=%s | Raw=(%.1f, %.1f) | Tested=(%.1f, %.1f) | HitRadius=%.1f",
+        tostring(inputObject.UserInputType),
+        inputObject.Position.X,
+        inputObject.Position.Y,
+        position.X,
+        position.Y,
+        HitRadius
+    ))
+
     for index, handle in ipairs(Handles) do
         if handle.Fill.Visible then
-            local distance = (handle.Fill.Position - position).Magnitude
+            local handlePosition = handle.Fill.Position
+            local distance = (handlePosition - position).Magnitude
+
+            warn(string.format(
+                "[RotateTool][DIAG] Handle[%d] %s/%s | Visible=true | Screen=(%.1f, %.1f) | Distance=%.1f",
+                index,
+                handle.Definition.Axis,
+                handle.Definition.Name,
+                handlePosition.X,
+                handlePosition.Y,
+                distance
+            ))
 
             if distance <= closestDistance then
                 closestDistance = distance
                 closestIndex = index
             end
+        else
+            warn(string.format(
+                "[RotateTool][DIAG] Handle[%d] %s/%s | Visible=false",
+                index,
+                handle.Definition.Axis,
+                handle.Definition.Name
+            ))
         end
+    end
+
+    if closestIndex then
+        local definition = Handles[closestIndex].Definition
+        warn(string.format(
+            "[RotateTool][DIAG] RESULT=%s/%s | Distance=%.1f",
+            definition.Axis,
+            definition.Name,
+            closestDistance
+        ))
+    else
+        warn("[RotateTool][DIAG] RESULT=NO_HANDLE")
     end
 
     return closestIndex
@@ -192,7 +232,12 @@ local function CaptureInput(_, inputState, inputObject)
             return Enum.ContextActionResult.Pass
         end
 
-        local handleIndex = FindHandleAt(GetScreenPosition(inputObject))
+        warn(string.format(
+            "[RotateTool][DIAG] CAS Begin received: %s",
+            tostring(inputType)
+        ))
+
+        local handleIndex = FindHandleAt(GetScreenPosition(inputObject), inputObject)
 
         if not handleIndex then
             return Enum.ContextActionResult.Pass
