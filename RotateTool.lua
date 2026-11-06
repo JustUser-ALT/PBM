@@ -19,7 +19,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local VERSION = "V1.3"
+local VERSION = "V1.4"
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
@@ -154,7 +154,7 @@ local CurrentPointer
 local CaptureActionName = "JustX_RotateHandleCapture"
 local HitRadius = 26
 local RotationRingSegments = 48
-local RotationRingRadius = 0.9
+local RotationRingRadius = 0.55
 local RotationRing = {}
 
 for index, definition in ipairs(HandleDefinitions) do
@@ -184,6 +184,7 @@ for index, definition in ipairs(HandleDefinitions) do
 end
 
 -- A single projected 3D ring is shown only while a handle is held.
+-- Keep it inside the handle positions so it does not visually pass through other axis handles.
 for index = 1, RotationRingSegments do
     local line = Drawing.new("Line")
     line.Color = Color3.new(1, 1, 1)
