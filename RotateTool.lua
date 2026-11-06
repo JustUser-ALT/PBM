@@ -19,7 +19,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local VERSION = "V1.2"
+local VERSION = "V1.3"
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
@@ -153,6 +153,9 @@ local TotalDragAngle = 0
 local CurrentPointer
 local CaptureActionName = "JustX_RotateHandleCapture"
 local HitRadius = 26
+local RotationRingSegments = 48
+local RotationRingRadius = 0.9
+local RotationRing = {}
 
 for index, definition in ipairs(HandleDefinitions) do
     local outline = Drawing.new("Circle")
@@ -178,6 +181,64 @@ for index, definition in ipairs(HandleDefinitions) do
         Outline = outline,
         Fill = fill
     }
+end
+
+-- A single projected 3D ring is shown only while a handle is held.
+for index = 1, RotationRingSegments do
+    local line = Drawing.new("Line")
+    line.Color = Color3.new(1, 1, 1)
+    line.Thickness = 2
+    line.Transparency = 1
+    line.Visible = false
+    pcall(function() line.ZIndex = 90 end)
+    RotationRing[index] = line
+end
+
+local function HideRotationRing()
+    for _, line in ipairs(RotationRing) do
+        line.Visible = false
+    end
+end
+
+local function UpdateRotationRing()
+    if not IsDragging or not DragStartPivot or not DragAxisWorld or not Camera then
+        HideRotationRing()
+        return
+    end
+
+    local axis = DragAxisWorld.Unit
+    local reference = math.abs(axis:Dot(Vector3.new(0, 1, 0))) > 0.95
+        and Vector3.new(1, 0, 0)
+        or Vector3.new(0, 1, 0)
+    local basisA = axis:Cross(reference).Unit
+    local basisB = axis:Cross(basisA).Unit
+    local center = DragStartPivot.Position
+    local radius = math.max(HandleDistance * RotationRingRadius, 1)
+
+    local projected = {}
+    for index = 1, RotationRingSegments do
+        local angle = ((index - 1) / RotationRingSegments) * math.pi * 2
+        local worldPoint = center
+            + basisA * (math.cos(angle) * radius)
+            + basisB * (math.sin(angle) * radius)
+        local screenPoint = Camera:WorldToViewportPoint(worldPoint)
+        projected[index] = {
+            Position = Vector2.new(screenPoint.X, screenPoint.Y),
+            Visible = screenPoint.Z > 0
+        }
+    end
+
+    local ringColor = AxisColors[Handles[ActiveHandle].Definition.Axis]
+    for index, line in ipairs(RotationRing) do
+        local nextIndex = index % RotationRingSegments + 1
+        local first = projected[index]
+        local second = projected[nextIndex]
+
+        line.Color = ringColor
+        line.From = first.Position
+        line.To = second.Position
+        line.Visible = first.Visible and second.Visible
+    end
 end
 
 local function HideHandles()
@@ -288,6 +349,7 @@ local function BeginDrag(handleIndex, position)
     LastPointerAngle = GetPointerAngle(position, DragCenterScreen)
     TotalDragAngle = 0
     IsDragging = true
+    UpdateRotationRing()
     return true
 end
 
@@ -309,6 +371,7 @@ local function FinishDrag()
     end
 
     IsDragging = false
+    HideRotationRing()
     DragStartPivot = nil
     DragAxisWorld = nil
     DragCenterScreen = nil
@@ -421,6 +484,7 @@ Connection = RunService.RenderStepped:Connect(function()
     if IsDragging and CurrentPointer then
         ApplyDrag(CurrentPointer)
     end
+    UpdateRotationRing()
     if not ClientState or not BuildModel.Parent then
         HideHandles()
         return
@@ -502,6 +566,9 @@ getgenv().RotateVisualCleanup = function()
         pcall(function() handle.Outline:Remove() end)
         pcall(function() handle.Fill:Remove() end)
     end
+    for _, line in ipairs(RotationRing) do
+        pcall(function() line:Remove() end)
+    end
 
     pcall(function() VersionLabel:Remove() end)
 
@@ -510,5 +577,6 @@ getgenv().RotateVisualCleanup = function()
 end
 
 print("[RotateTool] " .. VERSION .. " loaded")
+print("[RotateTool] Hold a handle to show its rotation-axis ring")
 print("[RotateTool] Drag a handle around the block to rotate its local axis")
 print("[RotateTool] X = blue | Y = green | Z = red")
