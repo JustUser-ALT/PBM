@@ -224,6 +224,15 @@ function RotateMode:Exit()
         end)
     end
 
+    if self.ClientState then
+        pcall(function()
+            self.ClientState.BoxSelection:SetAdornee(nil)
+            self.ClientState.BoxSelection:SetColor(Color3.new(0, 0, 1))
+            self.ClientState.MoveHandles:SetAdornee(nil)
+            self.ClientState.SelectedBlock = nil
+        end)
+    end
+
     print("[RotateTest] RotateMode.Exit")
 end
 
@@ -234,6 +243,25 @@ function RotateMode:Update(dt, clientState)
 
     self.ClientState = clientState or self.ClientState
 
+    local state = self.ClientState
+    local boxSelection = state and state.BoxSelection
+    if not state or not boxSelection then
+        return
+    end
+
+    -- RenderLoop clears BoxSelection before every mode Update.
+    -- Re-apply the selected outline here, after that clear.
+    local selected = state.SelectedBlock
+    if selected and selected.Parent then
+        boxSelection:SetColor(Color3.fromRGB(170, 85, 255))
+        boxSelection:SetAdornee(selected)
+        self.Outline:SetAdornee(nil)
+        self.Target = nil
+        return
+    end
+
+    boxSelection:SetAdornee(nil)
+
     local raycastOk, result = pcall(function()
         return self.Placement:Raycast()
     end)
@@ -241,14 +269,13 @@ function RotateMode:Update(dt, clientState)
     local block = nil
 
     if raycastOk and result and result.Instance then
-        local hit = result.Instance
-        local candidate = hit.Parent
+        local candidate = result.Instance.Parent
         local buildModel = workspace:FindFirstChild("BuildModel")
 
         if candidate
-        and candidate:IsA("Model")
-        and buildModel
-        and candidate.Parent == buildModel then
+            and candidate:IsA("Model")
+            and buildModel
+            and candidate.Parent == buildModel then
             block = candidate
         end
     end
@@ -273,9 +300,43 @@ end
 
 function RotateMode:Action(clientState)
     if not self.Active then
-        return
+        return Enum.ContextActionResult.Sink
     end
-    -- Rotation input will be integrated after hover selection testing.
+
+    self.ClientState = clientState or self.ClientState
+
+    local state = self.ClientState
+    if not state or not self.Placement then
+        return Enum.ContextActionResult.Sink
+    end
+
+    local raycastOk, result = pcall(function()
+        return self.Placement:Raycast()
+    end)
+
+    if not raycastOk or not result or not result.Instance then
+        state.SelectedBlock = nil
+        print("[RotateTest] Selection cleared: raycast miss")
+        return Enum.ContextActionResult.Sink
+    end
+
+    local block = result.Instance.Parent
+    local buildModel = workspace:FindFirstChild("BuildModel")
+
+    if not block or not buildModel or block.Parent ~= buildModel then
+        print("[RotateTest] Ignored target outside BuildModel")
+        return Enum.ContextActionResult.Sink
+    end
+
+    if state.SelectedBlock == block then
+        state.SelectedBlock = nil
+        print("[RotateTest] Deselected:", block:GetFullName())
+    else
+        state.SelectedBlock = block
+        print("[RotateTest] Selected:", block:GetFullName())
+    end
+
+    return Enum.ContextActionResult.Sink
 end
 
 function RotateMode:Destroy()
