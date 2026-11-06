@@ -145,10 +145,11 @@ end
 
 
 local function GetScreenPosition(inputObject)
-    -- Drawing positions from WorldToViewportPoint and touch positions
-    -- are already aligned in this client. Do not subtract GUI inset.
+    -- Touch positions are offset relative to Drawing viewport coordinates
+    -- on this client. Add the top-left GUI inset to align the coordinate spaces.
     local position = inputObject.Position
-    return Vector2.new(position.X, position.Y)
+    local inset = GuiService:GetGuiInset()
+    return Vector2.new(position.X + inset.X, position.Y + inset.Y)
 end
 
 local function FindHandleAt(position, inputObject)
