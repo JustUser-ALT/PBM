@@ -10,8 +10,8 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local BuildModeGui = PlayerGui:WaitForChild("BuildModeGui")
 
-local Common = ReplicatedStorage:WaitForChild("BuildMode"):WaitForChild("Common")
-local BuildingMode = require(Common:WaitForChild("BuildingMode"))
+local BuildModeFolder = ReplicatedStorage:WaitForChild("BuildMode")
+local BuildingMode = require(BuildModeFolder:WaitForChild("BuildingMode"))
 
 local function log(...)
     print("[ROTATE SELECTION TEST]", ...)
