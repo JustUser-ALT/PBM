@@ -294,7 +294,7 @@ end
 
 local function FinishDrag()
     if IsDragging and CurrentModel and CurrentModel.Parent then
-        local commitMove = ReplicatedStorage:FindFirstChild("Functions")
+        local commitMove = RS:FindFirstChild("Functions")
             and ReplicatedStorage.Functions:FindFirstChild("CommitMove")
 
         if commitMove then
