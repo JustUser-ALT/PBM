@@ -33,8 +33,12 @@ local BoxSelectionAdornment = require(
 local Env = getgenv()
 
 --==================================================
--- CLEANUP PREVIOUS TEST
+-- CLEANUP PREVIOUS TEST / VISUAL PROTOTYPE
 --==================================================
+
+if type(Env.RotateVisualCleanup) == "function" then
+    pcall(Env.RotateVisualCleanup)
+end
 
 if type(Env.RotateTestCleanup) == "function" then
     pcall(Env.RotateTestCleanup)
