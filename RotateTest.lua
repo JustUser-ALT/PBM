@@ -32,173 +32,15 @@ local BoxSelectionAdornment = require(
 
 local Env = getgenv()
 
--- Rotation gizmo uses the same Drawing-based handles as RotateTool.lua.
+-- Rotation gizmo uses the Drawing-based handles from RotateTool.lua.
 assert(Drawing, "[RotateTest] Drawing API unavailable")
-
 local BuildModel = workspace:WaitForChild("BuildModel")
 local Camera = workspace.CurrentCamera
 local VERSION = "V1.6"
 local HandleRadius = 13
 local OutlineRadius = 15
-local HandleDistance = 0
-local CurrentModel
-local ActiveHandle
-local ActiveInputType
-local ActiveTouchInput
-local IsDragging = false
-local DragStartPivot
-local DragAxisWorld
-local DragCenterScreen
-local LastPointerAngle
-local TotalDragAngle = 0
-local CurrentPointer
-local CaptureActionName = "JustX_RotateHandleCapture"
-local HitRadius = 26
-local RotationRingSegments = 48
-local RotationRingRadius = 0.55
-local RotationRing = {}
 
-
---==================================================
--- CLEANUP PREVIOUS TEST
---==================================================
-
-if type(Env.RotateTestCleanup) == "function" then
-    pcall(Env.RotateTestCleanup)
-end
-
---==================================================
--- FIND CLIENT STATE
---==================================================
-
-local ClientState
-
-for attempt = 1, 100 do
-    for _, object in ipairs(getgc(true)) do
-        if type(object) == "table"
-        and rawget(object, "ScreenGui") == BuildModeGui
-        and rawget(object, "Toolbar") then
-            ClientState = object
-            break
-        end
-    end
-
-    if ClientState then
-        break
-    end
-
-    task.wait(0.1)
-end
-
-assert(ClientState, "[RotateTest] ClientState not found")
-
---==================================================
--- FIND BUILDING MODE
---==================================================
-
-local BuildingModeModule = BuildModeFolder:WaitForChild("BuildingMode")
-local BuildingMode = require(BuildingModeModule)
-
-assert(
-    type(BuildingMode.SetMode) == "function",
-    "[RotateTest] BuildingMode.SetMode missing"
-)
-
-print("[RotateTest] BuildingMode found:", BuildingMode)
-
---==================================================
--- FIND ENUMERATION
---==================================================
-
-local Enumeration = require(BuildModeFolder:WaitForChild("Common"):WaitForChild("Enumeration"))
-assert(type(Enumeration) == "table" and Enumeration.BuildingMode, "[RotateTest] Enumeration module invalid")
-
-local BuildingModeEnum = Enumeration.BuildingMode
-local EnumItems = rawget(BuildingModeEnum, "__items")
-local EnumOrdered = rawget(BuildingModeEnum, "__ordered")
-
-assert(type(EnumItems) == "table", "[RotateTest] Enum items table not found")
-assert(type(EnumOrdered) == "table", "[RotateTest] Enum ordered table not found")
-
-local RotateEnum = rawget(EnumItems, "Rotate")
-local CreatedEnum = false
-
-if not RotateEnum then
-    RotateEnum = {
-        Name = "Rotate",
-        Value = 9,
-        EnumerationType = "BuildingMode"
-    }
-
-    setmetatable(RotateEnum, {
-        __tostring = function(self)
-            return string.format("Enumeration.%s.%s", self.EnumerationType, self.Name)
-        end
-    })
-
-    rawset(EnumItems, "Rotate", RotateEnum)
-    table.insert(EnumOrdered, RotateEnum)
-    CreatedEnum = true
-end
-
-print("[RotateTest] Enum registered:", tostring(RotateEnum))
-
---==================================================
--- NATIVE PLACE-BLOCK TITLE
--- BuildModeClient's native title table is local to its event callback.
--- SetTitle is applied after the native BuildingModeChanged listeners.
---==================================================
-
-local TitlePatchReady = true
-
---==================================================
--- REGISTER ROTATE ICON
---==================================================
-
-local RotateIcon = IconsFolder:FindFirstChild("Rotate")
-local CreatedIcon = false
-
-if not RotateIcon then
-    RotateIcon = IconsFolder:WaitForChild("Move"):Clone()
-    RotateIcon.Name = "Rotate"
-    RotateIcon.Parent = IconsFolder
-    CreatedIcon = true
-end
-
---==================================================
--- FIND RENDER LOOP MODES
---==================================================
-
-local RenderModes
-
-for _, connection in ipairs(getconnections(RunService.RenderStepped)) do
-    local fn = connection.Function
-
-    if type(fn) == "function" then
-        local success, upvalues = pcall(debug.getupvalues, fn)
-
-        if success and type(upvalues) == "table" then
-            for _, value in pairs(upvalues) do
-                if type(value) == "table"
-                and rawget(value, "Move")
-                and rawget(value, "Resize")
-                and rawget(value, "Select")
-                and rawget(value, "ColorPick") then
-                    RenderModes = value
-                    break
-                end
-            end
-        end
-    end
-
-    if RenderModes then
-        break
-    end
-end
-
-assert(RenderModes, "[RotateTest] RenderLoop modes table not found")
-
-
+-- Rotation gizmo visuals and interaction, adapted from RotateTool.lua.
 -- Axis colors: X blue, Y green, Z red.
 local AxisColors = {
     X = Color3.fromRGB(65, 155, 255),
@@ -336,119 +178,12 @@ local function UpdateRotationRing()
     end
 end
 
-
-local Handles = {}
-local ActiveHandle
-local ActiveInputType
-local ActiveTouchInput
-local IsDragging = false
-local DragStartPivot
-local DragAxisWorld
-local DragCenterScreen
-local LastPointerAngle
-local TotalDragAngle = 0
-local CurrentPointer
-local CaptureActionName = "JustX_RotateHandleCapture"
-local HitRadius = 26
-local RotationRingSegments = 48
-local RotationRingRadius = 0.55
-local RotationRing = {}
-
-for index, definition in ipairs(HandleDefinitions) do
-    local outline = Drawing.new("Circle")
-    outline.Color = Color3.fromRGB(15, 18, 24)
-    outline.Thickness = 2
-    outline.NumSides = 24
-    outline.Radius = OutlineRadius
-    outline.Filled = true
-    outline.Transparency = 1
-    outline.Visible = false
-
-    local fill = Drawing.new("Circle")
-    fill.Color = AxisColors[definition.Axis]
-    fill.Thickness = 1
-    fill.NumSides = 24
-    fill.Radius = HandleRadius
-    fill.Filled = true
-    fill.Transparency = 1
-    fill.Visible = false
-
-    Handles[index] = {
-        Definition = definition,
-        Outline = outline,
-        Fill = fill
-    }
-end
-
--- A single projected 3D ring is shown only while a handle is held.
--- The ring plane contains the selected handle axis, so it passes through that axis pair.
-for index = 1, RotationRingSegments do
-    local line = Drawing.new("Line")
-    line.Color = Color3.new(1, 1, 1)
-    line.Thickness = 2
-    line.Transparency = 1
-    line.Visible = false
-    pcall(function() line.ZIndex = 90 end)
-    RotationRing[index] = line
-end
-
-
-local function HideRotationRing()
-    for _, line in ipairs(RotationRing) do
-        line.Visible = false
+local function HideHandles()
+    for _, handle in ipairs(Handles) do
+        handle.Outline.Visible = false
+        handle.Fill.Visible = false
     end
 end
-
-local function UpdateRotationRing()
-    if not IsDragging or not DragStartPivot or not DragAxisWorld or not Camera then
-        HideRotationRing()
-        return
-    end
-
-    local pivot = DragStartPivot
-    local selectedAxis = Handles[ActiveHandle].Definition.Axis
-    local basisA, basisB
-
-    if selectedAxis == "X" then
-        basisA = pivot.RightVector
-        basisB = pivot.UpVector
-    elseif selectedAxis == "Y" then
-        basisA = pivot.UpVector
-        basisB = -pivot.LookVector
-    else
-        basisA = -pivot.LookVector
-        basisB = pivot.RightVector
-    end
-
-    local center = pivot.Position
-    local radius = math.max(HandleDistance, 1)
-
-    local projected = {}
-    for index = 1, RotationRingSegments do
-        local angle = ((index - 1) / RotationRingSegments) * math.pi * 2
-        local worldPoint = center
-            + basisA * (math.cos(angle) * radius)
-            + basisB * (math.sin(angle) * radius)
-        local screenPoint = Camera:WorldToViewportPoint(worldPoint)
-        projected[index] = {
-            Position = Vector2.new(screenPoint.X, screenPoint.Y),
-            Visible = screenPoint.Z > 0
-        }
-    end
-
-    local ringColor = AxisColors[Handles[ActiveHandle].Definition.Axis]
-    for index, line in ipairs(RotationRing) do
-        local nextIndex = index % RotationRingSegments + 1
-        local first = projected[index]
-        local second = projected[nextIndex]
-
-        line.Color = ringColor
-        line.From = first.Position
-        line.To = second.Position
-        line.Visible = first.Visible and second.Visible
-    end
-end
-
 
 local function GetModelSize(model)
     if model:IsA("Model") then
@@ -472,7 +207,6 @@ local function SetModel(model)
     local size = GetModelSize(model)
     HandleDistance = math.max(size.X, size.Y, size.Z) * 0.65 + 0.5
 end
-
 
 
 local function GetScreenPosition(inputObject)
@@ -504,7 +238,6 @@ local function GetPointerAngle(position, center)
     local offset = position - center
     return math.atan2(offset.Y, offset.X)
 end
-
 
 local function ApplyDrag(position)
     if not IsDragging or not DragStartPivot or not DragAxisWorld or not DragCenterScreen then
@@ -585,7 +318,6 @@ local function FinishDrag()
     TotalDragAngle = 0
 end
 
-
 local function SetActiveHandle(index)
     ActiveHandle = index
 
@@ -600,7 +332,6 @@ local function SetActiveHandle(index)
         handle.Outline.Thickness = active and 3 or 2
     end
 end
-
 
 local function CaptureInput(_, inputState, inputObject)
     local inputType = inputObject.UserInputType
@@ -663,7 +394,6 @@ local function CaptureInput(_, inputState, inputObject)
     return Enum.ContextActionResult.Pass
 end
 
-
 local InputChangedConnection = UserInputService.InputChanged:Connect(function(inputObject)
     if ActiveHandle and ActiveInputType == Enum.UserInputType.MouseButton1
         and inputObject.UserInputType == Enum.UserInputType.MouseMovement then
@@ -673,7 +403,6 @@ local InputChangedConnection = UserInputService.InputChanged:Connect(function(in
         CurrentPointer = GetScreenPosition(ActiveTouchInput)
     end
 end)
-
 
 
 local function UpdateGizmo()
@@ -720,11 +449,7 @@ end
 local function UpdateSelectedModel(selected)
     if typeof(selected) ~= "Instance"
         or not selected:IsDescendantOf(BuildModel) then
-        if CurrentModel then
-            SetModel(nil)
-        else
-            HideHandles()
-        end
+        SetModel(nil)
         return
     end
 
