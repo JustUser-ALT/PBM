@@ -473,10 +473,6 @@ local function Cleanup()
         Frame.Size = OriginalFrameSize
     end)
 
-    if PatchedTitle and TitleTable then
-        rawset(TitleTable, RotateEnum, PreviousRotateTitle)
-    end
-
     if CreatedEnum and rawget(EnumItems, "Rotate") == RotateEnum then
         rawset(EnumItems, "Rotate", nil)
 
@@ -510,6 +506,7 @@ print("[RotateTest] Icon: OK")
 print("[RotateTest] RenderLoop: OK")
 print("[RotateTest] Toolbar button: OK")
 print("[RotateTest] Hover outline: READY")
-print("[RotateTest] Title patch:", PatchedTitle)
+print("[RotateTest] Main action dispatch: OK")
+print("[RotateTest] Title listener: READY")
 print("[RotateTest] Click Rotate to test")
 print("================================")
