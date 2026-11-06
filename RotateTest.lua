@@ -436,8 +436,8 @@ end
 
 local function FinishDrag()
     if IsDragging and CurrentModel and CurrentModel.Parent then
-        local commitMove = RS:FindFirstChild("Functions")
-            and ReplicatedStorage.Functions:FindFirstChild("CommitMove")
+        local functionsFolder = RS:FindFirstChild("Functions")
+        local commitMove = functionsFolder and functionsFolder:FindFirstChild("CommitMove")
 
         if commitMove then
             local ok, err = pcall(function()
@@ -711,14 +711,16 @@ function RotateMode:Update(dt, clientState)
         return
     end
 
+    -- No selected block: fully reset the gizmo, including stale touch/handle state.
     if IsDragging then
         FinishDrag()
-        SetActiveHandle(nil)
-        ActiveInputType = nil
-        ActiveTouchInput = nil
-        CurrentPointer = nil
     end
+    SetActiveHandle(nil)
+    ActiveInputType = nil
+    ActiveTouchInput = nil
+    CurrentPointer = nil
     SetModel(nil)
+    HideHandles()
     HideRotationRing()
     boxSelection:SetAdornee(nil)
 
@@ -790,6 +792,16 @@ function RotateMode:Action(clientState)
 
     if state.SelectedBlock == block then
         state.SelectedBlock = nil
+        if IsDragging then
+            FinishDrag()
+        end
+        SetActiveHandle(nil)
+        ActiveInputType = nil
+        ActiveTouchInput = nil
+        CurrentPointer = nil
+        SetModel(nil)
+        HideHandles()
+        HideRotationRing()
         print("[RotateTest] Deselected:", block:GetFullName())
     else
         state.SelectedBlock = block
