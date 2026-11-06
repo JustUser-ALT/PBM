@@ -19,7 +19,7 @@ local ContextActionService = game:GetService("ContextActionService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local VERSION = "V1.4"
+local VERSION = "V1.5"
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
@@ -184,7 +184,7 @@ for index, definition in ipairs(HandleDefinitions) do
 end
 
 -- A single projected 3D ring is shown only while a handle is held.
--- Keep it inside the handle positions so it does not visually pass through other axis handles.
+-- The ring plane contains the selected handle axis, so it passes through that axis pair.
 for index = 1, RotationRingSegments do
     local line = Drawing.new("Line")
     line.Color = Color3.new(1, 1, 1)
@@ -207,14 +207,23 @@ local function UpdateRotationRing()
         return
     end
 
-    local axis = DragAxisWorld.Unit
-    local reference = math.abs(axis:Dot(Vector3.new(0, 1, 0))) > 0.95
-        and Vector3.new(1, 0, 0)
-        or Vector3.new(0, 1, 0)
-    local basisA = axis:Cross(reference).Unit
-    local basisB = axis:Cross(basisA).Unit
-    local center = DragStartPivot.Position
-    local radius = math.max(HandleDistance * RotationRingRadius, 1)
+    local pivot = DragStartPivot
+    local selectedAxis = Handles[ActiveHandle].Definition.Axis
+    local basisA, basisB
+
+    if selectedAxis == "X" then
+        basisA = pivot.RightVector
+        basisB = pivot.UpVector
+    elseif selectedAxis == "Y" then
+        basisA = pivot.UpVector
+        basisB = -pivot.LookVector
+    else
+        basisA = -pivot.LookVector
+        basisB = pivot.RightVector
+    end
+
+    local center = pivot.Position
+    local radius = math.max(HandleDistance, 1)
 
     local projected = {}
     for index = 1, RotationRingSegments do
@@ -333,10 +342,12 @@ end
 local function BeginDrag(handleIndex, position)
     local definition = Handles[handleIndex].Definition
     DragStartPivot = CurrentModel:GetPivot()
+    -- The ring plane contains the selected marker axis. Its normal is
+    -- therefore the actual rotation axis for this handle.
     DragAxisWorld = ({
-        X = DragStartPivot.RightVector,
-        Y = DragStartPivot.UpVector,
-        Z = -DragStartPivot.LookVector
+        X = -DragStartPivot.LookVector,
+        Y = DragStartPivot.RightVector,
+        Z = DragStartPivot.UpVector
     })[definition.Axis]
 
     local center, onScreen = Camera:WorldToViewportPoint(DragStartPivot.Position)
