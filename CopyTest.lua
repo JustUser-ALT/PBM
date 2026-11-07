@@ -210,24 +210,67 @@ local HandleDefinitions = {
     {Axis = "Y", Sign = 1}, {Axis = "Y", Sign = -1},
     {Axis = "Z", Sign = 1}, {Axis = "Z", Sign = -1}
 }
+
+local MoveStep = 0.1
+local StepGui = Instance.new("ScreenGui")
+StepGui.Name = "JustXCopyStepSettings"
+StepGui.ResetOnSpawn = false
+StepGui.IgnoreGuiInset = true
+StepGui.DisplayOrder = 10000
+
+local StepInput = Instance.new("TextBox")
+StepInput.Name = "StepInput"
+StepInput.Size = UDim2.fromOffset(55, 25)
+StepInput.Position = UDim2.new(1, -65, 0.52, 0)
+StepInput.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+StepInput.BorderSizePixel = 0
+StepInput.TextColor3 = Color3.new(1, 1, 1)
+StepInput.Text = "0.1"
+StepInput.PlaceholderText = "0.1"
+StepInput.Font = Enum.Font.Gotham
+StepInput.TextSize = 12
+StepInput.ClearTextOnFocus = false
+StepInput.Parent = StepGui
+
+local StepCorner = Instance.new("UICorner")
+StepCorner.CornerRadius = UDim.new(0, 5)
+StepCorner.Parent = StepInput
+
+local GuiParent
+pcall(function()
+    if type(gethui) == "function" then
+        GuiParent = gethui()
+    end
+end)
+StepGui.Parent = GuiParent or game:GetService("CoreGui")
+
+StepInput.FocusLost:Connect(function()
+    local value = tonumber(StepInput.Text)
+    if not value then
+        StepInput.Text = tostring(MoveStep)
+        return
+    end
+
+    MoveStep = math.clamp(value, 0.1, 10)
+    StepInput.Text = tostring(MoveStep)
+end)
+
 for index, definition in ipairs(HandleDefinitions) do
     local shaft = Drawing.new("Line")
     shaft.Color = GOLD
     shaft.Thickness = 3
     shaft.Visible = false
 
-    local head = Drawing.new("Circle")
+    local head = Drawing.new("Triangle")
     head.Color = GOLD
-    head.Thickness = 2
-    head.NumSides = 20
-    head.Radius = 8
     head.Filled = true
     head.Visible = false
 
     Handles[index] = {
         Definition = definition,
         Shaft = shaft,
-        Head = head
+        Head = head,
+        ScreenTip = nil
     }
 end
 
@@ -241,12 +284,12 @@ local DragStartPointer
 local CurrentPointer
 local LastAppliedOffset = 0
 local HandleHitRadius = 25
-local MoveSnap = 0.1
 
 local function HideHandles()
     for _, handle in ipairs(Handles) do
         handle.Shaft.Visible = false
         handle.Head.Visible = false
+        handle.ScreenTip = nil
     end
 end
 
@@ -254,7 +297,6 @@ local function SetActiveHandle(index)
     ActiveHandle = index
     for handleIndex, handle in ipairs(Handles) do
         local active = handleIndex == index
-        handle.Head.Radius = active and 11 or 8
         handle.Head.Color = active and Color3.new(1, 1, 1) or GOLD
         handle.Shaft.Thickness = active and 5 or 3
     end
@@ -265,7 +307,8 @@ local function FindHandleAt(position)
     local distanceLimit = HandleHitRadius
     for index, handle in ipairs(Handles) do
         if handle.Head.Visible then
-            local distance = (handle.Head.Position - position).Magnitude
+            local distance = handle.ScreenTip
+                and (handle.ScreenTip - position).Magnitude or math.huge
             if distance <= distanceLimit then
                 closest = index
                 distanceLimit = distance
@@ -311,9 +354,20 @@ local function UpdateHandles()
         handle.Head.Visible = visible
         if visible then
             local center, centerVisible = Camera:WorldToViewportPoint(pivot.Position)
-            handle.Shaft.From = Vector2.new(center.X, center.Y)
-            handle.Shaft.To = Vector2.new(screenPoint.X, screenPoint.Y)
-            handle.Head.Position = Vector2.new(screenPoint.X, screenPoint.Y)
+            local centerPoint = Vector2.new(center.X, center.Y)
+            local tipPoint = Vector2.new(screenPoint.X, screenPoint.Y)
+            local direction = (tipPoint - centerPoint).Unit
+            local perpendicular = Vector2.new(-direction.Y, direction.X)
+            local headLength = 14
+            local headWidth = 7
+            local basePoint = tipPoint - direction * headLength
+
+            handle.Shaft.From = centerPoint
+            handle.Shaft.To = basePoint
+            handle.Head.PointA = tipPoint
+            handle.Head.PointB = basePoint + perpendicular * headWidth
+            handle.Head.PointC = basePoint - perpendicular * headWidth
+            handle.ScreenTip = tipPoint
             handle.Shaft.Visible = centerVisible and center.Z > 0
         end
     end
@@ -380,7 +434,7 @@ local function ApplyDrag(pointer)
 
     local projected = (pointer - DragStartPointer):Dot(screenAxis.Unit)
     local rawOffset = projected / pixelsPerStud
-    local offset = math.floor(rawOffset / MoveSnap + 0.5) * MoveSnap
+    local offset = math.floor(rawOffset / MoveStep + 0.5) * MoveStep
     if math.abs(offset - LastAppliedOffset) < 0.0001 then return end
 
     LastAppliedOffset = offset
@@ -688,6 +742,7 @@ function CopyMode:Destroy()
         pcall(function() handle.Shaft:Remove() end)
         pcall(function() handle.Head:Remove() end)
     end
+    pcall(function() StepGui:Destroy() end)
     if self.Outline then
         pcall(function() self.Outline:Destroy() end)
         self.Outline = nil
