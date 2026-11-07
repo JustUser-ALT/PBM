@@ -380,7 +380,7 @@ local function ApplyDrag(pointer)
 
     local projected = (pointer - DragStartPointer):Dot(screenAxis.Unit)
     local rawOffset = projected / pixelsPerStud
-    local offset = math.floor(rawOffset / MoveSnap + (rawOffset >= 0 and 0.5 or -0.5)) * MoveSnap
+    local offset = math.floor(rawOffset / MoveSnap + 0.5) * MoveSnap
     if math.abs(offset - LastAppliedOffset) < 0.0001 then return end
 
     LastAppliedOffset = offset
@@ -448,6 +448,13 @@ CAS:BindActionAtPriority(
     Enum.UserInputType.MouseButton1,
     Enum.UserInputType.Touch
 )
+
+local InputChangedConnection = UIS.InputChanged:Connect(function(inputObject)
+    if ActiveHandle and ActiveInputType == Enum.UserInputType.MouseButton1
+        and inputObject.UserInputType == Enum.UserInputType.MouseMovement then
+        CurrentPointer = GetScreenPosition(inputObject)
+    end
+end)
 
 local function CreateCopy(source)
     local sourceRef = GetModelRef(source)
@@ -648,6 +655,10 @@ end
 function CopyMode:Destroy()
     if IsDragging then FinishDrag() end
     CAS:UnbindAction(CaptureActionName)
+    if InputChangedConnection then
+        InputChangedConnection:Disconnect()
+        InputChangedConnection = nil
+    end
     HideHandles()
     for _, handle in ipairs(Handles) do
         pcall(function() handle.Shaft:Remove() end)
