@@ -495,17 +495,41 @@ local function CreateCopy(source)
         return nil
     end
 
-    local size = sourceRef.Size
     local defaultSize = Vector3.new(4.5, 4.5, 4.5)
-    if (size - defaultSize).Magnitude > 0.1 then
+    local sourceBase = source:FindFirstChild("Base")
+    local sourceColorPart = source:FindFirstChild("ColorPart")
+    local copyBase = copy:FindFirstChild("Base")
+    local copyColorPart = copy:FindFirstChild("ColorPart")
+
+    -- Thin Wall is a two-part block. CommitResize needs a part/CFrame/Size
+    -- triple for BOTH Base and ColorPart; resizing only ColorPart loses the
+    -- wall dimensions when the map is saved and loaded again.
+    if sourceBase and sourceColorPart and copyBase and copyColorPart
+        and sourceBase:IsA("BasePart") and sourceColorPart:IsA("BasePart")
+        and copyBase:IsA("BasePart") and copyColorPart:IsA("BasePart") then
         task.wait(0.05)
-        local copyRef = GetModelRef(copy)
-        if copyRef then
-            local resizeOk, resizeError = pcall(function()
-                CommitResize:InvokeServer(copy, {copyRef, sourcePivot, size})
-            end)
-            if not resizeOk then
-                warn("[CopyTest] CommitResize failed:", resizeError)
+        local resizeData = {
+            copyBase, sourceBase.CFrame, sourceBase.Size,
+            copyColorPart, sourceColorPart.CFrame, sourceColorPart.Size
+        }
+        local resizeOk, resizeError = pcall(function()
+            CommitResize:InvokeServer(copy, resizeData)
+        end)
+        if not resizeOk then
+            warn("[CopyTest] Thin Wall CommitResize failed:", resizeError)
+        end
+    else
+        local size = sourceRef.Size
+        if (size - defaultSize).Magnitude > 0.1 then
+            task.wait(0.05)
+            local copyRef = GetModelRef(copy)
+            if copyRef then
+                local resizeOk, resizeError = pcall(function()
+                    CommitResize:InvokeServer(copy, {copyRef, sourcePivot, size})
+                end)
+                if not resizeOk then
+                    warn("[CopyTest] CommitResize failed:", resizeError)
+                end
             end
         end
     end
