@@ -486,7 +486,7 @@ local function CreateCopy(source)
         return nil
     end
 
-    local sourcePivot = source:GetPivot()
+    local sourcePivot = sourceRef.CFrame
     local moveOk, moveError = pcall(function()
         CommitMove:InvokeServer(copy, sourcePivot)
     end)
